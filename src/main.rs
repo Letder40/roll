@@ -1,9 +1,33 @@
 use std::{
     path::PathBuf,
     fs::{create_dir, DirEntry},
-    env::var, ffi::OsStr, io::Write,
+    env::var, 
+    ffi::OsStr, 
+    io::Write,
 };
+
 use rand::{self, Rng};
+
+use crossterm::{
+    execute,
+    style::{Color, Print, SetForegroundColor, ResetColor}
+};
+
+use tabled::{
+    builder::Builder,
+    settings::{
+        Style,
+    },
+};
+
+fn print_in_color(text: &str, color: Color) {
+    execute!(
+        std::io::stdout(),
+        SetForegroundColor(color),
+        Print(text),
+        ResetColor,
+    ).unwrap();
+}
 
 fn list_profiles(profiles:&mut Vec<DirEntry>) {
     let home_path = var("HOME").unwrap();
@@ -15,15 +39,19 @@ fn list_profiles(profiles:&mut Vec<DirEntry>) {
     };
 
     let mut counter = 1;
+    let mut builder = Builder::default();
+    let headers = vec!["ID", "path"];
+    builder.set_header(headers);
 
     for profile in roll_path.read_dir().expect(format!("error in reading childs of {path_str}").as_str() ) {
         if let Ok(profile) = profile {
             if profile.path().extension().is_none() {
                 continue;
             }else if profile.path().extension().unwrap() == OsStr::new("profile") {
-                println!("{} -> {}", counter, profile.path().display());
+                let row = [counter.to_string(), profile.path().as_os_str().to_str().unwrap().to_owned()];
                 profiles.push(profile);
                 counter += 1; 
+                builder.push_record(row);
             }
         }
     }
@@ -32,14 +60,19 @@ fn list_profiles(profiles:&mut Vec<DirEntry>) {
         println!("There are not profiles in {}", path_str);
         return; 
     }
+
+    let table = builder.build()
+    .with(Style::rounded()).to_string();
+
+    println!("{table}");
+
 }
 
-fn main() {
-    let mut profiles: Vec<DirEntry> = Vec::new();
-    list_profiles(&mut profiles);
+fn get_profile(profiles:&mut Vec<DirEntry>) -> &DirEntry {
+    print_in_color("\n[?] ", Color::Cyan);
+    println!("select a profile: ");
+    print_in_color("> ", Color::Green);
 
-    println!("\nselect a profile: ");
-    print!("> ");
     std::io::stdout().flush().unwrap();
 
     let mut input_buf: String = String::new();
@@ -51,11 +84,20 @@ fn main() {
         println!("\n[!] Error: There is not a profile with that identifier")
     }
 
-    let selected_profile = &profiles[input_int - 1];
+    &profiles[input_int - 1]
+}
+
+fn get_random_thing(selected_profile: &DirEntry) {
     let content = std::fs::read_to_string(selected_profile.path()).unwrap();
     let content_words: Vec<&str> = content.split('\n').filter(|word| !word.is_empty() ).collect();
-    println!("Charged profile -> {}\n", selected_profile.file_name().to_str().unwrap() );
-
     let rand_result = content_words[rand::thread_rng().gen_range(0..content_words.len())];
-    println!("result: {}", rand_result)
+    print_in_color("\nresult: ", Color::Green);
+    println!("{}", rand_result)
+}
+
+fn main() {
+    let mut profiles: Vec<DirEntry> = Vec::new();
+    list_profiles(&mut profiles);
+    let selected_profile = get_profile(&mut profiles);
+    get_random_thing(selected_profile);
 }
